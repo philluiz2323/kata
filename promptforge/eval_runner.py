@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from promptforge.baseline import generate_baseline_prompt_from_repository
+from promptforge.benchmarks import resolve_eval_pack_path
 from promptforge.config import resolve_registry_url
 from promptforge.eval_pack import EvalPackValidationResult, discover_eval_pack_tasks
 from promptforge.generator import generate_prompt_from_repository
@@ -82,6 +83,7 @@ def run_eval(
     agent_timeout_seconds: int | None = None,
     checks_timeout_seconds: int | None = None,
 ) -> EvalRunSummary:
+    eval_pack_root = resolve_eval_pack_path(eval_pack_path)
     validations = discover_eval_pack_tasks(eval_pack_path)
     invalid = [result for result in validations if not result.is_valid]
     if invalid:
@@ -94,7 +96,7 @@ def run_eval(
     resolved_registry_url = resolve_registry_url(registry_url)
     return run_prompt_variants(
         repo_ref=repo_ref,
-        eval_pack_path=eval_pack_path,
+        eval_pack_path=str(eval_pack_root),
         mode=mode,
         agent_command=agent_command,
         prompt_variants=[
@@ -125,6 +127,7 @@ def run_prompt_variants(
     run_kind: str = "eval",
     metadata: dict[str, str] | None = None,
 ) -> EvalRunSummary:
+    eval_pack_root = resolve_eval_pack_path(eval_pack_path)
     validations = discover_eval_pack_tasks(eval_pack_path)
     invalid = [result for result in validations if not result.is_valid]
     if invalid:
@@ -195,7 +198,7 @@ def run_prompt_variants(
     summary = EvalRunSummary(
         run_id=run_id,
         requested_repo_ref=repo_ref,
-        eval_pack=str(Path(eval_pack_path).expanduser().resolve()),
+        eval_pack=str(eval_pack_root),
         mode=mode,
         registry_url=None,
         agent_command=agent_command,

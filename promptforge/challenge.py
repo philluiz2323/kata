@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from promptforge.benchmarks import resolve_eval_pack_path
 from promptforge.eval_runner import EvalRunSummary, run_prompt_variants
 from promptforge.frontier import (
     FrontierManifest,
@@ -61,11 +62,12 @@ def run_frontier_challenge(
     agent_timeout_seconds: int | None = None,
     checks_timeout_seconds: int | None = None,
 ) -> ChallengeSummary:
+    eval_pack_root = resolve_eval_pack_path(eval_pack_path)
     manifest = load_frontier_manifest(eval_pack_path)
     mode_config = resolve_mode(manifest, mode)
     candidate_path = Path(candidate_prompt_path).expanduser().resolve()
     output_base = Path(output_root) if output_root else Path("runs")
-    challenge_run_id = build_challenge_id(Path(eval_pack_path).resolve().name, mode)
+    challenge_run_id = build_challenge_id(eval_pack_root.name, mode)
     challenge_root = output_base / challenge_run_id
     challenge_root.mkdir(parents=True, exist_ok=False)
 
@@ -89,7 +91,7 @@ def run_frontier_challenge(
         ],
         task_names=mode_config.primary_tasks,
         output_root=str(challenge_root / "primary"),
-        run_label=f"{Path(eval_pack_path).resolve().name}-{mode}-primary",
+        run_label=f"{eval_pack_root.name}-{mode}-primary",
         run_kind="challenge-primary",
         metadata={
             "evaluator_version": evaluator_version,
@@ -119,7 +121,7 @@ def run_frontier_challenge(
             ],
             task_names=mode_config.holdout_tasks,
             output_root=str(challenge_root / "holdout"),
-            run_label=f"{Path(eval_pack_path).resolve().name}-{mode}-holdout",
+            run_label=f"{eval_pack_root.name}-{mode}-holdout",
             run_kind="challenge-holdout",
             metadata={
                 "evaluator_version": evaluator_version,
@@ -137,7 +139,7 @@ def run_frontier_challenge(
     summary = ChallengeSummary(
         schema_version=2,
         run_id=challenge_run_id,
-        manifest_path=str(Path(eval_pack_path).expanduser().resolve() / "frontier.json"),
+        manifest_path=str(eval_pack_root / "frontier.json"),
         mode=mode,
         evaluator_version=evaluator_version,
         baseline_prompt=str(Path(mode_config.baseline_prompt).resolve()),

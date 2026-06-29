@@ -118,7 +118,7 @@ The usual workflow is:
 ## Repository Layout
 
 - `promptforge/`: core package and CLI
-- `evals/`: benchmark packs for registered repos
+- external benchmark registry repo: canonical benchmark source
 - `scripts/`: adapter commands for real agent evaluation
 - `tests/`: regression tests for evaluator behavior
 
@@ -130,17 +130,59 @@ Tracked benchmark artifacts may also include:
 
 Generated eval runs are written to `runs/` and are ignored by git.
 
+## Benchmark Registry
+
+PromptForge expects benchmark packs to live in a dedicated benchmark registry
+repo.
+
+The registry repo is identified by a marker file:
+
+- `promptforge-benchmark-registry.json`
+
+The benchmark packs then live under that repo's configured benchmarks directory,
+normally:
+
+- `<registry-root>/benchmarks/<repo-pack>/...`
+
+That benchmark repo is the canonical source of:
+
+- benchmark task folders
+- `frontier.json`
+- `prompts/<mode>/baseline.md`
+- `prompts/<mode>/frontier.md`
+
+PromptForge still uses the same file-based task format, but the benchmark
+content should live in the benchmark registry repo, not inside the main
+PromptForge repo.
+
+PromptForge resolves the registry in this order:
+
+1. `PROMPTFORGE_BENCHMARKS_ROOT`
+2. an explicitly passed filesystem path
+3. automatic discovery of a nearby repo that contains
+   `promptforge-benchmark-registry.json`
+
+`PROMPTFORGE_BENCHMARKS_ROOT` should point to either:
+
+- the registry repo root
+- the registry's `benchmarks/` directory
+
+`--eval-pack` accepts either:
+
+- a direct filesystem path
+- a pack id under the benchmark registry, such as `e35ventura__taopedia-articles`
+
 ## Benchmark State
 
-This branch does not currently ship a tracked live benchmark pack under
-`evals/`.
+This branch does not currently ship a tracked live benchmark pack inside the
+main PromptForge repo.
 
 To run PromptForge end to end, you should first create or add a repo-specific
-eval pack, then initialize a frontier for it.
+eval pack in your benchmark registry repo, then initialize a frontier for it.
 
 At minimum, that means:
 
-- one repo-specific task directory under `evals/`
+- one repo-specific pack under `<registry-root>/benchmarks/`
 - valid benchmark task files
 - a frontier manifest created with `promptforge frontier init`
 
@@ -167,7 +209,7 @@ Validate the benchmark pack:
 
 ```bash
 uv run python -m promptforge eval-pack validate \
-  --path evals/<repo-pack>
+  --path <repo-pack>
 ```
 
 Run a baseline-vs-generated eval:
@@ -175,7 +217,7 @@ Run a baseline-vs-generated eval:
 ```bash
 uv run python -m promptforge eval \
   --repo /path/to/target-repo \
-  --eval-pack evals/<repo-pack> \
+  --eval-pack <repo-pack> \
   --mode contributor \
   --agent-command "$PWD/scripts/run_codex_eval.sh"
 ```
@@ -193,7 +235,7 @@ Initialize a frontier manifest:
 ```bash
 uv run python -m promptforge frontier init \
   --repo /path/to/target-repo \
-  --eval-pack evals/<repo-pack> \
+  --eval-pack <repo-pack> \
   --mode contributor \
   --primary-task task-a \
   --primary-task task-b \
@@ -204,7 +246,7 @@ Inspect the current frontier:
 
 ```bash
 uv run python -m promptforge frontier show \
-  --eval-pack evals/<repo-pack> \
+  --eval-pack <repo-pack> \
   --mode contributor
 ```
 
@@ -212,7 +254,7 @@ Challenge the frontier:
 
 ```bash
 uv run python -m promptforge challenge \
-  --eval-pack evals/<repo-pack> \
+  --eval-pack <repo-pack> \
   --mode contributor \
   --candidate-prompt path/to/candidate.md \
   --agent-command "$PWD/scripts/run_codex_eval.sh"

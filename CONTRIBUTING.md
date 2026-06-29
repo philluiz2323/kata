@@ -36,6 +36,9 @@ Eval-pack tasks should be based on real repo work where possible:
 
 Do not commit placeholder scaffold tasks as if they were live benchmarks.
 
+Canonical benchmark packs should live in a benchmark registry repo that contains
+`promptforge-benchmark-registry.json`, rather than in the main PromptForge repo.
+
 ## Prompt competition model
 
 PromptForge uses three prompt roles:

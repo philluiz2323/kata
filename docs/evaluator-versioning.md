@@ -20,6 +20,10 @@ PromptForge now records this metadata in:
 - `challenge_summary.json`
 - `frontier.json`
 
+In the intended deployment model, `frontier.json` and the benchmark task files
+live in the benchmark registry repo identified by
+`promptforge-benchmark-registry.json`, while run artifacts stay in `runs/`.
+
 ## Why it matters
 
 A prompt improvement is only trustworthy when the measurement basis is stable.

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from promptforge.baseline import generate_baseline_prompt
+from promptforge.benchmarks import resolve_eval_pack_path
 from promptforge.eval_pack import discover_eval_pack_tasks
 from promptforge.generator import generate_prompt
 from promptforge.provenance import (
@@ -45,7 +46,7 @@ class FrontierManifest:
 
 
 def frontier_manifest_path(eval_pack_path: str) -> Path:
-    return Path(eval_pack_path).expanduser().resolve() / FRONTIER_FILENAME
+    return resolve_eval_pack_path(eval_pack_path) / FRONTIER_FILENAME
 
 
 def load_frontier_manifest(eval_pack_path: str) -> FrontierManifest:
@@ -102,7 +103,7 @@ def init_frontier(
     if not selected_primary:
         raise ValueError("Frontier init requires at least one primary task.")
 
-    eval_pack_root = Path(eval_pack_path).expanduser().resolve()
+    eval_pack_root = resolve_eval_pack_path(eval_pack_path)
     prompt_dir = eval_pack_root / "prompts" / mode
     prompt_dir.mkdir(parents=True, exist_ok=True)
     baseline_path = prompt_dir / "baseline.md"
@@ -232,7 +233,7 @@ def existing_or_new_manifest(*, repo_ref: str, eval_pack_path: str) -> FrontierM
     return FrontierManifest(
         schema_version=FRONTIER_SCHEMA_VERSION,
         repo_ref=repo_ref,
-        eval_pack=str(Path(eval_pack_path).expanduser().resolve()),
+        eval_pack=str(resolve_eval_pack_path(eval_pack_path)),
         modes={},
         updated_at=timestamp_now(),
     )

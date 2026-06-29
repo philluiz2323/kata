@@ -4,6 +4,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from promptforge.benchmarks import resolve_benchmarks_root, resolve_eval_pack_path
 from promptforge.repository import github_full_name, is_github_url
 
 REQUIRED_FILES = (
@@ -43,7 +44,7 @@ class EvalPackValidationResult:
 def init_eval_pack(repo_ref: str, task_id: str, output_root: str | None = None) -> Path:
     repo_slug = repository_slug(repo_ref)
     normalized_task_id = normalize_task_id(task_id)
-    base_dir = Path(output_root) if output_root else Path("evals")
+    base_dir = resolve_benchmarks_root(output_root, require_exists=False)
     pack_dir = base_dir / repo_slug / normalized_task_id
     pack_dir.mkdir(parents=True, exist_ok=False)
 
@@ -58,7 +59,7 @@ def init_eval_pack(repo_ref: str, task_id: str, output_root: str | None = None) 
 
 
 def validate_eval_pack(path: str) -> EvalPackValidationResult:
-    root = Path(path).expanduser().resolve()
+    root = resolve_eval_pack_path(path)
     missing_files: list[str] = []
     empty_files: list[str] = []
     placeholder_files: list[str] = []
@@ -83,7 +84,7 @@ def validate_eval_pack(path: str) -> EvalPackValidationResult:
 
 
 def discover_eval_pack_tasks(path: str) -> list[EvalPackValidationResult]:
-    root = Path(path).expanduser().resolve()
+    root = resolve_eval_pack_path(path)
     direct_result = validate_eval_pack(str(root))
     if direct_result.is_valid:
         return [direct_result]

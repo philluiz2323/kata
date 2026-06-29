@@ -71,7 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the baseline-vs-generated reference eval workflow.",
     )
     eval_cmd.add_argument("--repo", required=True, help="Path or URL of the target repo.")
-    eval_cmd.add_argument("--eval-pack", required=True, help="Path to the repo eval pack.")
+    eval_cmd.add_argument(
+        "--eval-pack",
+        required=True,
+        help="Path to the repo eval pack or a pack id under the benchmark registry.",
+    )
     eval_cmd.add_argument(
         "--mode",
         choices=["contributor", "reviewer"],
@@ -121,7 +125,11 @@ def build_parser() -> argparse.ArgumentParser:
         "init", help="Create baseline/frontier prompts and a frontier manifest."
     )
     frontier_init.add_argument("--repo", required=True, help="Path or URL of the target repo.")
-    frontier_init.add_argument("--eval-pack", required=True, help="Path to the repo eval pack.")
+    frontier_init.add_argument(
+        "--eval-pack",
+        required=True,
+        help="Path to the repo eval pack or a pack id under the benchmark registry.",
+    )
     frontier_init.add_argument(
         "--mode",
         choices=["contributor", "reviewer"],
@@ -148,7 +156,11 @@ def build_parser() -> argparse.ArgumentParser:
     frontier_init.set_defaults(handler=handle_frontier_init)
 
     frontier_show = frontier_subparsers.add_parser("show", help="Show frontier manifest details.")
-    frontier_show.add_argument("--eval-pack", required=True, help="Path to the repo eval pack.")
+    frontier_show.add_argument(
+        "--eval-pack",
+        required=True,
+        help="Path to the repo eval pack or a pack id under the benchmark registry.",
+    )
     frontier_show.add_argument(
         "--mode",
         choices=["contributor", "reviewer"],
@@ -171,7 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
         "challenge",
         help="Run baseline/frontier/challenger competition for one repo and mode.",
     )
-    challenge.add_argument("--eval-pack", required=True, help="Path to the repo eval pack.")
+    challenge.add_argument(
+        "--eval-pack",
+        required=True,
+        help="Path to the repo eval pack or a pack id under the benchmark registry.",
+    )
     challenge.add_argument(
         "--mode",
         choices=["contributor", "reviewer"],
@@ -216,14 +232,22 @@ def build_parser() -> argparse.ArgumentParser:
     eval_pack_init.add_argument(
         "--output-root",
         default=None,
-        help="Optional base directory for eval packs. Defaults to ./evals.",
+        help=(
+            "Optional benchmark registry root or benchmarks directory. "
+            "Defaults to the registry discovered via "
+            "`promptforge-benchmark-registry.json`."
+        ),
     )
     eval_pack_init.set_defaults(handler=handle_eval_pack_init)
 
     eval_pack_validate = eval_pack_subparsers.add_parser(
         "validate", help="Validate an eval-pack task directory."
     )
-    eval_pack_validate.add_argument("--path", required=True, help="Path to the eval-pack task.")
+    eval_pack_validate.add_argument(
+        "--path",
+        required=True,
+        help="Path to the eval-pack task/pack or a pack id under the benchmark registry.",
+    )
     eval_pack_validate.set_defaults(handler=handle_eval_pack_validate)
 
     report = subparsers.add_parser("report", help="Render an eval report.")
