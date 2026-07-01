@@ -1,85 +1,65 @@
-from __future__ import annotations
+"""Taopedia-specific first king agent for the Kata contributor lane."""
 
-"""Seeded Kata agent for the contributor lane (frontier)."""
+from __future__ import annotations
 
 import json
 import re
 import subprocess
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
-SEED_INSTRUCTIONS = "# Kata Contributor Seed Instructions: Taopedia Articles\n\nRepo: `taopedia-articles`\nGitHub: `e35ventura/taopedia-articles`\n\nThis seed instruction set is source-grounded from repo files and the configured SN74 registry.\n\n## Repo Overview\n- This repository contains the public MDX article source for Taopedia, a Bittensor-focused knowledge base. (repo:README.md)\n\n## Contribution Rules\n- Use the required front matter. (repo:CONTRIBUTING.md)\n- category: One primary topic. Do not use Bittensor as a catch-all category. (repo:CONTRIBUTING.md)\n- tags: Zero to three specific topic tags. Do not use Bittensor; every published Taopedia article is already Bittensor-focused. (repo:CONTRIBUTING.md)\n- Keep sentences direct; do not use a long explanation when a short one preserves the meaning. (repo:CONTRIBUTING.md)\n- Sources are required for factual and technical claims. AI-assisted writing is allowed, but unsourced writing is not. (repo:CONTRIBUTING.md)\n- Do not use generic homepages, SEO pages, social posts, or screenshots as support for technical claims unless they are clearly marked as context and no stronger source exists. (repo:CONTRIBUTING.md)\n- Every section should add a new fact, distinction, caveat, source, or operational detail. (repo:CONTRIBUTING.md)\n- When docs and code disagree, code is the source of truth for implementation behavior. Docs can support conceptual explanations, but exact mechanics should be backed by code, release notes, or official specs. (repo:CONTRIBUTING.md)\n\n## Validation Commands\n- `npm run format:check` (repo:CONTRIBUTING.md)\n- `npm run validate` (repo:CONTRIBUTING.md)\n\n## Protected Paths\n- Repository-wide ownership rules exist (`*`). (repo:.github/CODEOWNERS)\n\n## Kata PR Checklist\n- Run the most relevant validation commands above before opening the PR. (repo:CONTRIBUTING.md)\n- Avoid changing protected or maintainer-owned paths unless explicitly intended. (repo:.github/CODEOWNERS)\n- Include the required visual evidence for visible UI changes. (repo:CONTRIBUTING.md)\n\n## Scoring / Registry Notes\n- Registry entry found for `e35ventura/taopedia-articles`. (https://raw.githubusercontent.com/entrius/gittensor/test/gittensor/validator/weights/master_repositories.json)\n- `emission_share`: `0.025` (https://raw.githubusercontent.com/entrius/gittensor/test/gittensor/validator/weights/master_repositories.json)\n- `trusted_label_pipeline`: `True` (https://raw.githubusercontent.com/entrius/gittensor/test/gittensor/validator/weights/master_repositories.json)\n- `label_multipliers`: article=1.0, correction=1.25, image=0.75, category=0.5, other=0.1 (https://raw.githubusercontent.com/entrius/gittensor/test/gittensor/validator/weights/master_repositories.json)\n- `eligibility`: min_credibility=0.7, min_token_score_for_valid_issue=0.0 (https://raw.githubusercontent.com/entrius/gittensor/test/gittensor/validator/weights/master_repositories.json)\n\n## Unknowns / Caveats\n- No major source gaps were detected in the current scan.\n\n## Sources\n- https://github.com/e35ventura/taopedia-articles.git@baa3ebab1a533cfdf4b114bc180b69df3c365051\n- repo:README.md\n- repo:CONTRIBUTING.md\n- repo:.github/CODEOWNERS\n- repo:.github/workflows/build-index.yml\n- repo:.github/workflows/pr-source-check.yml\n- repo:.github/workflows/release.yml\n- repo:.github/workflows/trigger-taopedia-deploy.yml\n- repo:.github/workflows/validate-content.yml\n- https://raw.githubusercontent.com/entrius/gittensor/test/gittensor/validator/weights/master_repositories.json\n"
+SEED_INSTRUCTIONS = """# Kata Contributor Seed Instructions: Taopedia Articles
+
+Repo: `taopedia-articles`
+GitHub: `e35ventura/taopedia-articles`
+
+This agent is optimized for Kata benchmark tasks in the Taopedia article repo.
+
+## Repo Rules
+- Articles live under `content/pages/<slug>/index.mdx`.
+- Preserve existing front matter, heading structure, citations, and formatting unless asked.
+- Keep edits narrow. Do not reformat unrelated prose.
+- Sources are required for factual and technical claims.
+- Prefer official docs, source code, release notes, or specifications over generic summaries.
+- When docs and code disagree, implementation code is the source of truth.
+- Every added section should add a new fact, distinction, caveat, source, or operational detail.
+
+## Benchmark Strategy
+- Read the task literally and edit only the target article unless another file is named.
+- If the task says "fix", replace or remove the wrong statement instead of adding duplicate text.
+- If the task says "improve", make the smallest complete source-backed improvement.
+- If asked for a distinction, add a concise `## Distinction from ...` section.
+- Return only a unified diff that applies cleanly with `git apply`.
+"""
+
 LANE_MODE = "contributor"
 AGENT_LABEL = "frontier"
-MAX_CONTEXT_CHARS = 52000
-MAX_FILE_CHARS = 14000
-MAX_REFERENCE_FILE_CHARS = 6000
-MAX_REFERENCE_FILES = 2
-ARTICLE_PATH_PATTERN = re.compile(r"content/pages/[A-Za-z0-9_./-]+")
-TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
-STOP_WORDS = {
-    "a",
-    "add",
-    "an",
-    "and",
-    "article",
-    "be",
-    "content",
-    "correct",
-    "edit",
-    "expected",
-    "file",
-    "for",
-    "goal",
-    "green",
-    "in",
-    "index",
-    "mdx",
-    "must",
-    "of",
-    "or",
-    "outcome",
-    "page",
-    "pages",
-    "path",
-    "pinned",
-    "repo",
-    "repository",
-    "scoped",
-    "snapshot",
-    "so",
-    "stay",
-    "task",
-    "the",
-    "to",
-    "update",
-    "validation",
-}
-STATIC_CONTEXT_PATHS = (
-    "CONTRIBUTING.md",
-    "package.json",
-    ".github/CODEOWNERS",
+MAX_TARGET_BYTES = 24000
+MAX_RELATED_BYTES = 8000
+MAX_TOTAL_CONTEXT_BYTES = 85000
+MAX_RELATED_FILES = 8
+REQUEST_TIMEOUT_SECONDS = 180
+
+PATH_PATTERN = re.compile(
+    r"`([^`]+?\.(?:mdx|md|json|ya?ml|toml|txt|ts|tsx|js|jsx|py))`"
 )
-TASK_EXECUTION_RULES = """\
-Execution rules for this repo:
-- Prefer the exact article path named in the task when one is provided.
-- Keep edits tightly scoped; avoid broad rewrites or unrelated file changes.
-- Preserve valid front matter and fix it if it is incomplete or malformed.
-- Keep prose factual, concise, and Bittensor-focused.
-- Prefer official docs, code, release notes, and primary sources for claims.
-- Use wiki-style internal links like [[Article Title]] instead of normal relative article links.
-- Return only a unified diff.
-"""
+HEADING_PATTERN = re.compile(r"^(#{1,3}\s+.+)$", re.MULTILINE)
+TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+
+
+@dataclass(frozen=True)
+class TaskSpec:
+    title: str
+    target_paths: tuple[str, ...]
+    tokens: frozenset[str]
+    wants_distinction: bool
 
 
 def solve(repo_path: str, issue: str, model: str, api_base: str, api_key: str) -> dict:
     if not model:
-        return {
-            "success": False,
-            "message": "validator did not provide a model",
-            "diff": "",
-        }
+        return {"success": False, "message": "validator did not provide a model", "diff": ""}
     if not api_base:
         return {
             "success": False,
@@ -88,216 +68,213 @@ def solve(repo_path: str, issue: str, model: str, api_base: str, api_key: str) -
         }
 
     repo_root = Path(repo_path).resolve()
-    tracked_files = list_tracked_files(repo_root)
-    target_paths = extract_target_paths(issue, tracked_files)
-    repo_context = build_repo_context(
-        repo_root=repo_root,
-        issue=issue,
-        tracked_files=tracked_files,
-        target_paths=target_paths,
-    )
+    task = parse_task(issue)
+    repo_context = build_repo_context(repo_root, task)
     response_text = request_diff(
         model=model,
         api_base=api_base,
         api_key=api_key,
         issue=issue,
         repo_context=repo_context,
-        target_paths=target_paths,
     )
     diff_text = normalize_diff(response_text)
     if not diff_text:
         return {
             "success": False,
-            "message": "model did not return an applicable unified diff",
+            "message": "model did not return a unified diff",
             "diff": "",
         }
-    scope_errors = validate_diff_scope(diff_text, target_paths)
-    if scope_errors:
-        return {
-            "success": False,
-            "message": "; ".join(scope_errors),
-            "diff": "",
-        }
+
+    check_result = git_apply_check(repo_root, diff_text)
+    if not check_result.ok:
+        repaired = request_diff(
+            model=model,
+            api_base=api_base,
+            api_key=api_key,
+            issue=issue,
+            repo_context=repo_context,
+            previous_diff=diff_text,
+            apply_error=check_result.error,
+        )
+        repaired_diff = normalize_diff(repaired)
+        repaired_check = (
+            git_apply_check(repo_root, repaired_diff) if repaired_diff else check_result
+        )
+        if repaired_diff and repaired_check.ok:
+            diff_text = repaired_diff
+        else:
+            return {
+                "success": False,
+                "message": (
+                    "model returned a diff that failed git apply --check: "
+                    f"{check_result.error}"
+                ),
+                "diff": "",
+            }
+
     return {
         "success": True,
-        "message": f"{AGENT_LABEL} seed agent produced a diff",
+        "message": f"{AGENT_LABEL} Taopedia king produced an applyable diff",
         "diff": diff_text,
     }
 
 
-def list_tracked_files(repo_root: Path) -> list[str]:
-    completed = subprocess.run(
-        ["git", "ls-files"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        check=False,
+@dataclass(frozen=True)
+class ApplyCheck:
+    ok: bool
+    error: str = ""
+
+
+def parse_task(issue: str) -> TaskSpec:
+    title = first_nonempty_line(issue)
+    paths = tuple(
+        dict.fromkeys(
+            path for path in PATH_PATTERN.findall(issue) if not path.startswith(".")
+        )
     )
-    if completed.returncode != 0:
-        return []
-    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
-
-
-def extract_target_paths(issue: str, tracked_files: list[str]) -> list[str]:
-    tracked = set(tracked_files)
-    targets: list[str] = []
-    seen: set[str] = set()
-    for match in ARTICLE_PATH_PATTERN.findall(issue):
-        candidate = normalize_candidate_path(match)
-        if candidate in tracked and candidate not in seen:
-            seen.add(candidate)
-            targets.append(candidate)
-            continue
-        article_candidate = candidate.rstrip("/") + "/index.mdx"
-        if article_candidate in tracked and article_candidate not in seen:
-            seen.add(article_candidate)
-            targets.append(article_candidate)
-    if targets:
-        return targets
-
-    issue_tokens = extract_issue_tokens(issue)
-    ranked_articles = rank_article_paths(issue_tokens, tracked_files)
-    return ranked_articles[:1]
-
-
-def normalize_candidate_path(value: str) -> str:
-    return value.strip().strip("`'\"()[]{}<>.,:;")
-
-
-def extract_issue_tokens(issue: str) -> set[str]:
-    tokens: set[str] = set()
-    for raw in TOKEN_PATTERN.findall(issue.lower().replace("-", "_")):
-        parts = [part for part in raw.split("_") if part]
-        for part in parts:
-            if len(part) < 3 or part in STOP_WORDS:
-                continue
-            tokens.add(part)
-    return tokens
-
-
-def rank_article_paths(issue_tokens: set[str], tracked_files: list[str]) -> list[str]:
-    article_paths = [
-        path
-        for path in tracked_files
-        if path.startswith("content/pages/") and path.endswith("/index.mdx")
-    ]
-    ranked = sorted(
-        article_paths,
-        key=lambda path: (
-            article_match_score(path, issue_tokens),
-            path,
-        ),
-        reverse=True,
+    content_paths = tuple(path for path in paths if path.startswith("content/pages/"))
+    target_paths = content_paths or paths
+    raw_tokens = set(TOKEN_PATTERN.findall(issue.lower()))
+    noisy = {
+        "task",
+        "title",
+        "goal",
+        "update",
+        "fix",
+        "improve",
+        "content",
+        "pages",
+        "index",
+        "mdx",
+    }
+    tokens = frozenset(token for token in raw_tokens if len(token) > 2 and token not in noisy)
+    wants_distinction = "distinction" in raw_tokens or "distinguish" in raw_tokens
+    return TaskSpec(
+        title=title,
+        target_paths=target_paths,
+        tokens=tokens,
+        wants_distinction=wants_distinction,
     )
-    return [path for path in ranked if article_match_score(path, issue_tokens) > 0]
 
 
-def article_match_score(path: str, issue_tokens: set[str]) -> int:
-    if not issue_tokens:
-        return 0
-    path_tokens = extract_issue_tokens(path)
-    overlap = len(path_tokens & issue_tokens)
-    slug = path.split("/")[2] if path.count("/") >= 2 else path
-    title_bonus = 2 if slug.lower() in issue_tokens else 0
-    return overlap * 10 + title_bonus
+def first_nonempty_line(value: str) -> str:
+    for line in value.splitlines():
+        stripped = line.strip("#: \t")
+        if stripped:
+            return stripped[:180]
+    return "Kata benchmark task"
 
 
-def build_repo_context(
-    *,
-    repo_root: Path,
-    issue: str,
-    tracked_files: list[str],
-    target_paths: list[str],
-) -> str:
-    focus_files = select_focus_files(issue, tracked_files, target_paths)
+def build_repo_context(repo_root: Path, task: TaskSpec) -> str:
     sections: list[str] = []
-    if target_paths:
-        sections.append("## Target Paths")
-        sections.extend(f"- {path}" for path in target_paths)
-        sections.append("")
-    sections.append("## Focus Files")
-    sections.extend(f"- {path}" for path in focus_files)
-    sections.append("")
-    sections.append("## Available Article Slugs")
-    sections.append(render_article_slug_list(tracked_files))
-    sections.append("")
-    sections.append("## File Contents")
-    file_sections = render_file_sections(repo_root, focus_files, target_paths)
-    sections.append(file_sections or "(no file contents captured)")
-    return "\n".join(sections).strip()
+    budget = MAX_TOTAL_CONTEXT_BYTES
 
-
-def select_focus_files(issue: str, tracked_files: list[str], target_paths: list[str]) -> list[str]:
-    tracked = set(tracked_files)
-    focus: list[str] = []
-    seen: set[str] = set()
-
-    def add(path: str) -> None:
-        if path in tracked and path not in seen:
-            seen.add(path)
-            focus.append(path)
-
-    for path in STATIC_CONTEXT_PATHS:
-        add(path)
-    for path in target_paths:
-        add(path)
-
-    issue_tokens = extract_issue_tokens(issue)
-    for path in rank_article_paths(issue_tokens, tracked_files):
-        if path in target_paths:
-            continue
-        add(path)
-        if len([item for item in focus if item.startswith("content/pages/")]) >= (
-            len(target_paths) + MAX_REFERENCE_FILES
-        ):
-            break
-    return focus
-
-
-def render_article_slug_list(tracked_files: list[str]) -> str:
-    slugs = sorted(
-        {
-            path.split("/")[2]
-            for path in tracked_files
-            if path.startswith("content/pages/") and path.endswith("/index.mdx")
-        }
+    sections.append(
+        "## Parsed Task\n"
+        f"Title: {task.title}\n"
+        f"Target paths: {', '.join(task.target_paths) if task.target_paths else '(none parsed)'}\n"
+        f"Important tokens: {', '.join(sorted(task.tokens)) or '(none)'}"
     )
-    if not slugs:
-        return "(no article slugs found)"
-    if len(slugs) > 80:
-        slugs = slugs[:80]
-    return ", ".join(slugs)
 
+    for relative_path in baseline_context_paths(repo_root):
+        chunk = file_section(repo_root, relative_path, MAX_RELATED_BYTES)
+        if chunk and fits_budget(chunk, budget):
+            sections.append(chunk)
+            budget -= byte_len(chunk)
 
-def render_file_sections(repo_root: Path, focus_files: list[str], target_paths: list[str]) -> str:
-    sections: list[str] = []
-    total_chars = 0
-    target_set = set(target_paths)
-    for relative_path in focus_files:
-        absolute_path = repo_root / relative_path
-        if not absolute_path.is_file():
+    for relative_path in task.target_paths:
+        chunk = file_section(repo_root, relative_path, MAX_TARGET_BYTES)
+        if chunk and fits_budget(chunk, budget):
+            sections.append(chunk)
+            budget -= byte_len(chunk)
+
+    for relative_path in related_article_paths(repo_root, task):
+        if relative_path in task.target_paths:
             continue
-        max_chars = MAX_FILE_CHARS if relative_path in target_set else MAX_REFERENCE_FILE_CHARS
-        content = read_text_excerpt(absolute_path, max_chars=max_chars)
-        if not content:
-            continue
-        section = f"### FILE: {relative_path}\n```\n{content}\n```"
-        if total_chars + len(section) > MAX_CONTEXT_CHARS:
-            break
-        sections.append(section)
-        total_chars += len(section)
+        chunk = file_section(repo_root, relative_path, MAX_RELATED_BYTES)
+        if chunk and fits_budget(chunk, budget):
+            sections.append(chunk)
+            budget -= byte_len(chunk)
+
+    content_index = content_pages_index(repo_root, task.target_paths)
+    if content_index:
+        sections.append(content_index)
+
     return "\n\n".join(sections)
 
 
-def read_text_excerpt(path: Path, *, max_chars: int) -> str:
-    try:
-        content = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
+def baseline_context_paths(repo_root: Path) -> list[str]:
+    candidates = ["CONTRIBUTING.md", "README.md", "package.json"]
+    return [path for path in candidates if (repo_root / path).is_file()]
+
+
+def related_article_paths(repo_root: Path, task: TaskSpec) -> list[str]:
+    content_root = repo_root / "content" / "pages"
+    if not content_root.is_dir():
+        return []
+
+    scored: list[tuple[int, str]] = []
+    for path in content_root.glob("*/index.mdx"):
+        relative_path = path.relative_to(repo_root).as_posix()
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        haystack = f"{relative_path}\n{extract_headings(content)}".lower()
+        score = sum(1 for token in task.tokens if token in haystack)
+        if task.wants_distinction and "## distinction from " in content.lower():
+            score += 4
+        if score > 0:
+            scored.append((score, relative_path))
+
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [relative_path for _, relative_path in scored[:MAX_RELATED_FILES]]
+
+
+def content_pages_index(repo_root: Path, target_paths: tuple[str, ...]) -> str:
+    content_root = repo_root / "content" / "pages"
+    if not content_root.is_dir():
         return ""
-    content = content.strip()
-    if len(content) <= max_chars:
-        return content
-    return content[:max_chars].rstrip() + "\n...[truncated]"
+    names = sorted(path.parent.name for path in content_root.glob("*/index.mdx"))
+    target_names = {
+        Path(path).parent.name
+        for path in target_paths
+        if path.startswith("content/pages/")
+    }
+    nearby = [name for name in names if name in target_names]
+    remaining = [name for name in names if name not in target_names]
+    selected = nearby + remaining[:160]
+    if len(names) > len(selected):
+        selected.append(f"... {len(names) - len(selected)} more")
+    return "## Article Slug Index\n" + "\n".join(selected)
+
+
+def extract_headings(content: str) -> str:
+    return "\n".join(match.group(1) for match in HEADING_PATTERN.finditer(content))
+
+
+def file_section(repo_root: Path, relative_path: str, max_bytes: int) -> str:
+    path = repo_root / relative_path
+    if not path.is_file():
+        return ""
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    encoded = content.encode("utf-8")
+    truncated = ""
+    if len(encoded) > max_bytes:
+        content = encoded[:max_bytes].decode("utf-8", errors="ignore")
+        truncated = "\n...[truncated]"
+    return f"### FILE: {relative_path}\n```\n{content.rstrip()}{truncated}\n```"
+
+
+def fits_budget(value: str, remaining: int) -> bool:
+    return byte_len(value) <= remaining
+
+
+def byte_len(value: str) -> int:
+    return len(value.encode("utf-8"))
 
 
 def request_diff(
@@ -307,24 +284,32 @@ def request_diff(
     api_key: str,
     issue: str,
     repo_context: str,
-    target_paths: list[str],
+    previous_diff: str = "",
+    apply_error: str = "",
 ) -> str:
     system_prompt = (
-        "You are a repo-specific coding agent for Kata. "
+        "You are the current first king agent for Kata's Taopedia contributor lane.\n"
+        "Solve the task from the task description and repository context only. "
+        "Do not rely on hidden oracle files, test fixtures, or external private metadata.\n"
         "Return only a unified diff that can be applied with git apply. "
         "Do not return prose, markdown fences, or explanations.\n\n"
-        f"{TASK_EXECUTION_RULES}\n"
         "Repo-specific instructions:\n"
         f"{SEED_INSTRUCTIONS}"
     )
-    target_text = "\n".join(f"- {path}" for path in target_paths) if target_paths else "- none detected"
+    repair_context = ""
+    if previous_diff or apply_error:
+        repair_context = (
+            "\n\nThe previous diff failed `git apply --check`.\n"
+            f"Apply error:\n{apply_error.strip()}\n\n"
+            f"Previous diff:\n{previous_diff.strip()}\n\n"
+            "Return a corrected unified diff only."
+        )
     user_prompt = (
         f"Lane mode: {LANE_MODE}\n\n"
-        "Explicit target paths:\n"
-        f"{target_text}\n\n"
         "Task:\n"
         f"{issue.strip()}\n\n"
-        f"{repo_context}\n\n"
+        f"{repo_context}"
+        f"{repair_context}\n\n"
         "Output requirement: return only the final unified diff."
     )
     payload = {
@@ -333,8 +318,7 @@ def request_diff(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.2,
-        "max_tokens": 2000,
+        "max_tokens": 4000,
     }
     request = urllib.request.Request(
         build_chat_completions_url(api_base),
@@ -343,7 +327,7 @@ def request_diff(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             response_payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -361,9 +345,7 @@ def build_chat_completions_url(api_base: str) -> str:
 
 
 def build_headers(api_key: str) -> dict[str, str]:
-    headers = {
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
@@ -397,51 +379,28 @@ def normalize_diff(value: str) -> str:
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
         text = "\n".join(lines).strip()
-    diff_index = text.find("diff --git")
-    if diff_index == -1:
-        diff_index = text.find("--- ")
-    if diff_index != -1:
-        return text[diff_index:].rstrip() + "\n"
+    diff_start = text.find("diff --git ")
+    patch_start = text.find("--- ")
+    starts = [index for index in (diff_start, patch_start) if index >= 0]
+    if starts:
+        text = text[min(starts) :].strip()
+    if text.startswith("diff --git") or text.startswith("--- "):
+        return text + "\n"
     return ""
 
 
-def validate_diff_scope(diff_text: str, target_paths: list[str]) -> list[str]:
-    if not target_paths:
-        return []
-    changed_paths = parse_changed_paths(diff_text)
-    if not changed_paths:
-        return ["model returned a diff without parseable changed file paths"]
-    disallowed = sorted(path for path in changed_paths if path not in target_paths)
-    if not disallowed:
-        return []
-    return [
-        "model proposed edits outside the named task path: " + ", ".join(disallowed)
-    ]
-
-
-def parse_changed_paths(diff_text: str) -> list[str]:
-    changed: list[str] = []
-    seen: set[str] = set()
-    for line in diff_text.splitlines():
-        if line.startswith("diff --git "):
-            parts = line.split()
-            if len(parts) >= 4:
-                candidate = normalize_diff_path(parts[3])
-                if candidate and candidate not in seen:
-                    seen.add(candidate)
-                    changed.append(candidate)
-        elif line.startswith("+++ "):
-            candidate = normalize_diff_path(line[4:].strip())
-            if candidate and candidate not in seen:
-                seen.add(candidate)
-                changed.append(candidate)
-    return changed
-
-
-def normalize_diff_path(value: str) -> str | None:
-    if value == "/dev/null":
-        return None
-    path = value
-    if path.startswith("a/") or path.startswith("b/"):
-        path = path[2:]
-    return path.strip()
+def git_apply_check(repo_root: Path, diff_text: str) -> ApplyCheck:
+    if not diff_text:
+        return ApplyCheck(ok=False, error="empty diff")
+    completed = subprocess.run(
+        ["git", "apply", "--check", "-"],
+        cwd=str(repo_root),
+        input=diff_text,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        return ApplyCheck(ok=True)
+    error = (completed.stderr or completed.stdout or "unknown git apply error").strip()
+    return ApplyCheck(ok=False, error=error[:2000])
