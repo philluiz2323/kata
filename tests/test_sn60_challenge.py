@@ -337,6 +337,13 @@ def test_run_sn60_challenge_stops_before_duel_when_screening_fails(
     assert challenge_state.screening_result["status"] == "failed"
     assert promotion_record.final_winner == "frontier"
 
+    snapshot = load_benchmark_snapshot(
+        SN60_MINER_LANE_ID,
+        public_root=str(tmp_path / "public"),
+    )
+    assert snapshot.sandbox_commit_hash == "sandbox-commit-1"
+    assert snapshot.project_keys == ["project-alpha"]
+
 
 def build_variant(
     variant_name: str,

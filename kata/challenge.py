@@ -17,6 +17,7 @@ from kata.evaluators.sn60_bitsec import (
     Sn60DuelSummary,
     Sn60EvaluationHook,
     Sn60ExecutionHook,
+    Sn60SandboxSource,
     Sn60VariantSummary,
     bitsec_project_image,
     hash_bundle_root,
@@ -571,23 +572,10 @@ def record_sn60_lane_provenance(
         screening_result=screening_result,
     )
     freshness_fingerprint = sn60_freshness_fingerprint(duel_summary)
-    write_benchmark_snapshot(
-        lane_id,
-        BenchmarkSnapshotState(
-            schema_version=BENCHMARK_SNAPSHOT_SCHEMA_VERSION,
-            sandbox_mirror_source=duel_summary.sandbox_source.sandbox_root,
-            sandbox_commit_hash=duel_summary.sandbox_source.sandbox_commit,
-            benchmark_dataset_id=Path(duel_summary.sandbox_source.benchmark_file).name,
-            benchmark_dataset_hash=duel_summary.sandbox_source.benchmark_sha256,
-            project_list_hash=sn60_project_list_hash(duel_summary.project_keys),
-            project_keys=list(duel_summary.project_keys),
-            container_images=[
-                bitsec_project_image(project_key)
-                for project_key in duel_summary.project_keys
-            ],
-            scorer_version=duel_summary.sandbox_source.scorer_version,
-            updated_at=datetime.now(UTC).isoformat(),
-        ),
+    record_sn60_benchmark_snapshot(
+        lane_id=lane_id,
+        sandbox_source=duel_summary.sandbox_source,
+        project_keys=list(duel_summary.project_keys),
         public_root=public_root,
     )
     challenge_path = write_challenge_state(
@@ -650,6 +638,12 @@ def record_sn60_screening_failure_provenance(
     )
     screening_payload = screening_result_payload(screening)
     reason = "; ".join(screening.reasons) if screening.reasons else "unknown screening failure"
+    record_sn60_benchmark_snapshot(
+        lane_id=lane_id,
+        sandbox_source=screening.sandbox_source,
+        project_keys=list(project_keys),
+        public_root=public_root,
+    )
     challenge_path = write_challenge_state(
         lane_id,
         ChallengeState(
@@ -722,6 +716,33 @@ def sn60_local_replica_scores(duel_summary: Sn60DuelSummary) -> dict[str, list[f
         "frontier": [result.score for result in duel_summary.frontier.replica_results],
         "candidate": [result.score for result in duel_summary.candidate.replica_results],
     }
+
+
+def record_sn60_benchmark_snapshot(
+    *,
+    lane_id: str,
+    sandbox_source: Sn60SandboxSource,
+    project_keys: list[str],
+    public_root: str | None = None,
+) -> None:
+    write_benchmark_snapshot(
+        lane_id,
+        BenchmarkSnapshotState(
+            schema_version=BENCHMARK_SNAPSHOT_SCHEMA_VERSION,
+            sandbox_mirror_source=sandbox_source.sandbox_root,
+            sandbox_commit_hash=sandbox_source.sandbox_commit,
+            benchmark_dataset_id=Path(sandbox_source.benchmark_file).name,
+            benchmark_dataset_hash=sandbox_source.benchmark_sha256,
+            project_list_hash=sn60_project_list_hash(project_keys),
+            project_keys=list(project_keys),
+            container_images=[
+                bitsec_project_image(project_key) for project_key in project_keys
+            ],
+            scorer_version=sandbox_source.scorer_version,
+            updated_at=datetime.now(UTC).isoformat(),
+        ),
+        public_root=public_root,
+    )
 
 
 def sn60_project_list_hash(project_keys: list[str]) -> str:

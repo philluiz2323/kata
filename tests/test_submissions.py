@@ -1700,6 +1700,7 @@ def test_validate_submission_accepts_miner_submission_for_registry_lane(
 
     assert result.reasons == []
     assert result.is_valid
+    assert result.evaluator_id == "sn60_bitsec"
 
 
 def test_init_submission_rejects_inactive_registry_lane(

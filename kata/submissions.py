@@ -165,6 +165,7 @@ class SubmissionValidationResult:
     off_scope_paths: list[str]
     reasons: list[str]
     metadata: SubmissionMetadata | None
+    evaluator_id: str | None = None
 
     @property
     def is_valid(self) -> bool:
@@ -352,6 +353,7 @@ def validate_submission(
                 )
             )
 
+    evaluator_entry = find_evaluator_pack_entry(descriptor.repo_pack, descriptor.mode)
     return SubmissionValidationResult(
         submission_path=str(descriptor.root),
         repo_pack=descriptor.repo_pack,
@@ -363,6 +365,7 @@ def validate_submission(
         off_scope_paths=off_scope_paths,
         reasons=dedupe(reasons),
         metadata=metadata,
+        evaluator_id=evaluator_entry.evaluator_id if evaluator_entry else None,
     )
 
 
