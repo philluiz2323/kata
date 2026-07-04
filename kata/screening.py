@@ -224,6 +224,20 @@ def validate_sn60_static_screening(candidate_root: str | Path) -> list[str]:
                 "SN60 screening rejected benchmark-answer leakage token: "
                 f"`{token}`."
             )
+
+    parsed_trees: dict[str, ast.AST] = {}
+    for relative_path, content in sorted(bundle_files.items()):
+        if not relative_path.endswith(".py"):
+            continue
+        try:
+            parsed_trees[relative_path] = ast.parse(content, filename=relative_path)
+        except SyntaxError:
+            continue
+    if parsed_trees:
+        # submissions imports this module; lazy import avoids a circular import.
+        from kata.submissions import validate_bundle_sampling_policy
+
+        reasons.extend(validate_bundle_sampling_policy(parsed_trees))
     return dedupe(reasons)
 
 
